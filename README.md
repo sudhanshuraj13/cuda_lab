@@ -29,7 +29,7 @@ You need:
 - Ultralytics YOLO
 - OpenCV development libraries for C++
 - A C++17 compiler
-- Optional: NVIDIA HPC SDK if you want the OpenACC pragmas in `gpu_processor.cpp` to run on GPU
+- Optional: NVIDIA GPU, compatible driver, and NVIDIA HPC SDK if you want the OpenACC pragmas in `gpu_processor.cpp` to run on GPU
 
 ## Python Setup
 
@@ -51,6 +51,7 @@ Notes:
 
 - `ultralytics` will also install `torch` and related dependencies.
 - On the first run, YOLO may download `yolov8n.pt` automatically if it is not already present.
+- The current setup does not explicitly force CUDA for YOLO. Ultralytics can use GPU inference only if your PyTorch install has CUDA support and a compatible NVIDIA GPU is available.
 
 ## C++ Build Dependencies
 
@@ -78,6 +79,84 @@ This is the simplest option. The code will still compile, but the OpenACC pragma
 ```bash
 g++ -O3 -std=c++17 gpu_processor.cpp -o gpu_processor $(pkg-config --cflags --libs opencv4)
 ```
+
+## How OpenACC And CUDA Work In This Project
+
+This project uses OpenACC directly in the C++ program, but it does not contain handwritten CUDA kernels.
+
+### OpenACC in `gpu_processor.cpp`
+
+The GPU-related part of the C++ code is this block:
+
+```cpp
+#pragma acc data copyin(in[0:input_len]) copyout(out[0:gray_len])
+{
+    #pragma acc parallel loop present(in[0:input_len], out[0:gray_len])
+    for (int i = 0; i < pixels; ++i) {
+        ...
+        out[i] = static_cast<unsigned char>((r + g + b) / 3);
+    }
+}
+```
+
+What it does:
+
+- `copyin(in[0:input_len])` moves the input image buffer from CPU memory to GPU memory.
+- `copyout(out[0:gray_len])` copies the grayscale result back from GPU memory to CPU memory.
+- `parallel loop` tells the compiler to run the pixel loop in parallel on the accelerator.
+- Each loop iteration processes one pixel and converts BGR to grayscale.
+
+In practice, when you compile with `nvc++ -acc`, the NVIDIA compiler can generate GPU code from these pragmas and use the NVIDIA CUDA software stack underneath.
+
+### What CUDA means here
+
+There is no explicit CUDA code in this repository:
+
+- no `__global__` kernels
+- no `cudaMalloc`
+- no `cudaMemcpy`
+- no manual CUDA stream management
+
+Instead, OpenACC is the programming model, and the compiler handles the GPU offload details for you.
+
+So the relationship is:
+
+- you write OpenACC directives
+- the compiler targets the NVIDIA GPU
+- CUDA is used underneath by the compiler/runtime when GPU offload is enabled
+
+### What still runs on CPU
+
+Even when OpenACC is enabled, most of the pipeline is still CPU-side:
+
+- webcam capture with `cv::VideoCapture`
+- frame resize with `cv::resize`
+- `std::memcpy` into the input buffer
+- JPEG encoding with `cv::imwrite`
+- file rename/write to `/dev/shm`
+- Python file polling and safe frame loading
+
+Only the grayscale conversion loop is offloaded by the OpenACC block in the current implementation.
+
+### YOLO and CUDA in `inference.py`
+
+The Python script uses Ultralytics YOLO on top of PyTorch:
+
+- if PyTorch has CUDA support and a compatible NVIDIA GPU is available, inference can run on GPU
+- otherwise, inference runs on CPU
+
+The current script does not manually select a device, so device choice is left to the underlying Ultralytics/PyTorch setup.
+
+### Important performance note
+
+Because this code copies image data to the GPU and then back to the CPU for every frame, OpenACC may not provide a large speedup for such a small grayscale kernel by itself.
+
+If you want a more GPU-heavy pipeline, the next step would usually be to keep more of the workflow on the GPU, for example:
+
+- GPU resize
+- GPU grayscale conversion
+- GPU inference
+- fewer host/device transfers
 
 ## How To Run
 
