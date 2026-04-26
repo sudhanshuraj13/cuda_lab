@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "C:\\Users\\Sudhanshu raj\\OneDrive\\Documents\\datasets",
+  "weights_dir": "C:\\Users\\Sudhanshu raj\\OneDrive\\Documents\\New project\\weights",
+  "runs_dir": "C:\\Users\\Sudhanshu raj\\OneDrive\\Documents\\New project\\runs",
+  "uuid": "15f16231f5b1ce26a22757476af941e31c85614f6cbf16d5f8b05d8c7e30aa10",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}
